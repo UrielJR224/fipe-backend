@@ -38,11 +38,19 @@ app.get("/api/test-db", async (req, res) => {
    ROTA CADASTRO USUARIO
 ============================= */
 
-app.post("/api/cadastro", async (req, res) => {
-  const { nome, email, senha } = req.body;
+/* =============================
+   ROTA CADASTRO USUARIO
+============================= */
 
-  if (!nome || !email || !senha) {
+app.post("/api/cadastro", async (req, res) => {
+  const { nome, sobrenome, telefone, email, senha, confirmarSenha } = req.body;
+
+  if (!nome || !sobrenome || !telefone || !email || !senha || !confirmarSenha) {
     return res.status(400).json({ erro: "Preencha todos os campos" });
+  }
+
+  if (senha !== confirmarSenha) {
+    return res.status(400).json({ erro: "As senhas não coincidem" });
   }
 
   try {
@@ -56,8 +64,11 @@ app.post("/api/cadastro", async (req, res) => {
     }
 
     const novoUsuario = await pool.query(
-      "INSERT INTO usuarios (nome, email, senha, saldo) VALUES ($1, $2, $3, $4) RETURNING id, nome, email, saldo",
-      [nome, email, senha, 0]
+      `INSERT INTO usuarios 
+      (nome, sobrenome, telefone, email, senha, saldo) 
+      VALUES ($1, $2, $3, $4, $5, $6) 
+      RETURNING id, nome, sobrenome, email, saldo`,
+      [nome, sobrenome, telefone, email, senha, 0]
     );
 
     res.json(novoUsuario.rows[0]);
@@ -67,6 +78,7 @@ app.post("/api/cadastro", async (req, res) => {
     res.status(500).json({ erro: "Erro interno do servidor" });
   }
 });
+
 
 /* =============================
    ROTA LOGIN USUARIO
