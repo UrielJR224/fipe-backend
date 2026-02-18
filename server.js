@@ -68,7 +68,7 @@ app.post("/api/cadastro", async (req, res) => {
       (nome, sobrenome, telefone, email, senha, saldo) 
       VALUES ($1, $2, $3, $4, $5, $6) 
       RETURNING id, nome, sobrenome, email, saldo`,
-      [nome, sobrenome, telefone, email, senha, 0]
+      [nome, sobrenome, telefone, email, senha, 3]
     );
 
     res.json(novoUsuario.rows[0]);
@@ -153,8 +153,8 @@ app.get("/api/placafipe/:placa", async (req, res) => {
     );
 
     // 3️⃣ Descontar 1 crédito
-    await pool.query(
-      "UPDATE usuarios SET saldo = saldo - 1 WHERE id = $1",
+    const novoSaldo = await pool.query(
+      "UPDATE usuarios SET saldo = saldo - 1 WHERE id = $1 RETURNING saldo",
       [usuario_id]
     );
 
