@@ -35,6 +35,41 @@ app.get("/api/test-db", async (req, res) => {
 });
 
 /* =============================
+   ROTA CADASTRO USUARIO
+============================= */
+
+app.post("/api/cadastro", async (req, res) => {
+  const { nome, email, senha } = req.body;
+
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ erro: "Preencha todos os campos" });
+  }
+
+  try {
+    const usuarioExistente = await pool.query(
+      "SELECT * FROM usuarios WHERE email = $1",
+      [email]
+    );
+
+    if (usuarioExistente.rows.length > 0) {
+      return res.status(400).json({ erro: "Email já cadastrado" });
+    }
+
+    const novoUsuario = await pool.query(
+      "INSERT INTO usuarios (nome, email, senha, saldo) VALUES ($1, $2, $3, $4) RETURNING id, nome, email, saldo",
+      [nome, email, senha, 0]
+    );
+
+    res.json(novoUsuario.rows[0]);
+
+  } catch (error) {
+    console.error("Erro ao cadastrar:", error.message);
+    res.status(500).json({ erro: "Erro interno do servidor" });
+  }
+});
+
+
+/* =============================
    ROTA CONSULTA FIPE
 ============================= */
 
