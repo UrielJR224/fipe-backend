@@ -107,25 +107,62 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* =============================
-   ROTA CONSULTA FIPE
+   ROTA CONSULTA FIPE COM CRÉDITO
 ============================= */
 
 app.get("/api/placafipe/:placa", async (req, res) => {
   const { placa } = req.params;
+  const { usuario_id } = req.query;
+
+  if (!usuario_id) {
+    return res.status(400).json({ erro: "usuario_id é obrigatório" });
+  }
+
+  const placaFormatada = placa.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
   try {
-    const response = await axios.get(
-      `https://api.placafipe.com.br/getplacafipe/${placa}/${process.env.FIPE_API_TOKEN}`
+    // 1️⃣ Buscar usuário
+    const usuario = await pool.query(
+      "SELECT * FROM usuarios WHERE id = $1",
+      [usuario_id]
     );
 
-    res.json(response.data);
+    if (usuario.rows.length === 0) {
+      return res.status(404).json({ erro: "Usuário não encontrado" });
+    }
+
+    if (usuario.rows[0].saldo <= 0) {
+      return res.status(403).json({ erro: "Saldo insuficiente" });
+    }
+
+    // 2️⃣ Consultar API FIPE
+    const response = await axios.get(
+      `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
+    );
+
+    // 3️⃣ Descontar 1 crédito
+    await pool.query(
+      "UPDATE usuarios SET saldo = saldo - 1 WHERE id = $1",
+      [usuario_id]
+    );
+
+    // 4️⃣ Registrar consulta
+    await pool.query(
+      "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
+      [usuario_id, placaFormatada, 1]
+    );
+
+    res.json({
+      saldo_restante: usuario.rows[0].saldo - 1,
+      dados_fipe: response.data
+    });
 
   } catch (error) {
-    console.error("Erro real da API:", error.response?.data || error.message);
+    console.error("Erro na consulta:", error.message);
 
     res.status(500).json({
       erro: "Erro ao consultar placa",
-      detalhe: error.response?.data || error.message
+      detalhe: error.message
     });
   }
 });
