@@ -68,6 +68,43 @@ app.post("/api/cadastro", async (req, res) => {
   }
 });
 
+/* =============================
+   ROTA LOGIN USUARIO
+============================= */
+
+app.post("/api/login", async (req, res) => {
+  const { email, senha } = req.body;
+
+  if (!email || !senha) {
+    return res.status(400).json({ erro: "Preencha email e senha" });
+  }
+
+  try {
+    const usuario = await pool.query(
+      "SELECT * FROM usuarios WHERE email = $1",
+      [email]
+    );
+
+    if (usuario.rows.length === 0) {
+      return res.status(400).json({ erro: "Usuário não encontrado" });
+    }
+
+    if (usuario.rows[0].senha !== senha) {
+      return res.status(400).json({ erro: "Senha incorreta" });
+    }
+
+    res.json({
+      id: usuario.rows[0].id,
+      nome: usuario.rows[0].nome,
+      email: usuario.rows[0].email,
+      saldo: usuario.rows[0].saldo
+    });
+
+  } catch (error) {
+    console.error("Erro no login:", error.message);
+    res.status(500).json({ erro: "Erro interno do servidor" });
+  }
+});
 
 /* =============================
    ROTA CONSULTA FIPE
