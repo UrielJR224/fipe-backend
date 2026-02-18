@@ -21,6 +21,20 @@ const pool = new Pool({
 });
 
 /* =============================
+   ROTA TESTE BANCO
+============================= */
+
+app.get("/api/test-db", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Erro ao conectar no banco:", error.message);
+    res.status(500).json({ erro: error.message });
+  }
+});
+
+/* =============================
    ROTA CONSULTA FIPE
 ============================= */
 
