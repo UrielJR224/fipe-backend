@@ -113,9 +113,9 @@ app.post("/api/login", async (req, res) => {
    CONSULTA FIPE (GRÁTIS)
 ============================= */
 
-app.get("/api/placafipe/:placa", async (req, res) => {
+app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
 
-  const { placa } = req.params;
+  const { placa, usuario_id } = req.params;
   const placaFormatada = placa.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
   try {
@@ -123,6 +123,14 @@ app.get("/api/placafipe/:placa", async (req, res) => {
     const response = await axios.get(
       `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
     );
+
+    // 🔥 SALVA CONSULTA GRATUITA SE ESTIVER LOGADO
+    if (usuario_id) {
+      await pool.query(
+        "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
+        [usuario_id, placaFormatada, 0]
+      );
+    }
 
     res.json(response.data);
 
