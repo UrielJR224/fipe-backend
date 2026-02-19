@@ -184,26 +184,31 @@ app.post("/api/verificacao/:placa", async (req, res) => {
   }
 });
 
+
 /* =============================
-   HISTÓRICO
+   ROTA HISTÓRICO CONSULTAS
 ============================= */
 
 app.get("/api/historico/:usuario_id", async (req, res) => {
-
   const { usuario_id } = req.params;
 
   try {
-    const historico = await pool.query(
-      "SELECT * FROM consultas WHERE usuario_id = $1 ORDER BY id DESC",
+    const consultas = await pool.query(
+      `SELECT placa, valor_pago, criado_em
+       FROM consultas
+       WHERE usuario_id = $1
+       ORDER BY criado_em DESC`,
       [usuario_id]
     );
 
-    res.json(historico.rows);
+    res.json(consultas.rows);
 
   } catch (error) {
+    console.error("Erro ao buscar histórico:", error.message);
     res.status(500).json({ erro: "Erro ao buscar histórico" });
   }
 });
+
 
 /* =============================
    SERVIDOR
@@ -214,3 +219,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
+
