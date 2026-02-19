@@ -10,18 +10,16 @@ app.use(cors());
 app.use(express.json());
 
 /* =============================
-   BANCO DE DADOS POSTGRES
+   BANCO POSTGRES
 ============================= */
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 /* =============================
-   ROTA TESTE BANCO
+   TESTE BANCO
 ============================= */
 
 app.get("/api/test-db", async (req, res) => {
@@ -29,17 +27,12 @@ app.get("/api/test-db", async (req, res) => {
     const result = await pool.query("SELECT NOW()");
     res.json(result.rows);
   } catch (error) {
-    console.error("Erro ao conectar no banco:", error.message);
     res.status(500).json({ erro: error.message });
   }
 });
 
 /* =============================
-   ROTA CADASTRO USUARIO
-============================= */
-
-/* =============================
-   ROTA CADASTRO USUARIO
+   CADASTRO (GANHA 3 CRÉDITOS)
 ============================= */
 
 app.post("/api/cadastro", async (req, res) => {
@@ -68,20 +61,18 @@ app.post("/api/cadastro", async (req, res) => {
       (nome, sobrenome, telefone, email, senha, saldo) 
       VALUES ($1, $2, $3, $4, $5, $6) 
       RETURNING id, nome, sobrenome, email, saldo`,
-      [nome, sobrenome, telefone, email, senha, 3]
+      [nome, sobrenome, telefone, email, senha, 3] // 🎁 bônus automático
     );
 
     res.json(novoUsuario.rows[0]);
 
   } catch (error) {
-    console.error("Erro ao cadastrar:", error.message);
     res.status(500).json({ erro: "Erro interno do servidor" });
   }
 });
 
-
 /* =============================
-   ROTA LOGIN USUARIO
+   LOGIN
 ============================= */
 
 app.post("/api/login", async (req, res) => {
@@ -108,32 +99,56 @@ app.post("/api/login", async (req, res) => {
     res.json({
       id: usuario.rows[0].id,
       nome: usuario.rows[0].nome,
+      sobrenome: usuario.rows[0].sobrenome,
       email: usuario.rows[0].email,
       saldo: usuario.rows[0].saldo
     });
 
   } catch (error) {
-    console.error("Erro no login:", error.message);
     res.status(500).json({ erro: "Erro interno do servidor" });
   }
 });
 
 /* =============================
-   ROTA CONSULTA FIPE COM CRÉDITO
+   CONSULTA FIPE (GRÁTIS)
 ============================= */
 
 app.get("/api/placafipe/:placa", async (req, res) => {
+
   const { placa } = req.params;
-  const { usuario_id } = req.query;
-
-  if (!usuario_id) {
-    return res.status(400).json({ erro: "usuario_id é obrigatório" });
-  }
-
   const placaFormatada = placa.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
   try {
-    // 1️⃣ Buscar usuário
+
+    const response = await axios.get(
+      `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    res.status(500).json({
+      erro: "Erro ao consultar placa",
+      detalhe: error.message
+    });
+  }
+});
+
+/* =============================
+   SERVIÇO PAGO EXEMPLO (VERIFICAÇÃO)
+============================= */
+
+app.post("/api/verificacao/:placa", async (req, res) => {
+
+  const { placa } = req.params;
+  const { usuario_id } = req.body;
+
+  if (!usuario_id) {
+    return res.status(400).json({ erro: "Usuário obrigatório" });
+  }
+
+  try {
+
     const usuario = await pool.query(
       "SELECT * FROM usuarios WHERE id = $1",
       [usuario_id]
@@ -147,35 +162,46 @@ app.get("/api/placafipe/:placa", async (req, res) => {
       return res.status(403).json({ erro: "Saldo insuficiente" });
     }
 
-    // 2️⃣ Consultar API FIPE
-    const response = await axios.get(
-      `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
-    );
+    // Aqui você colocaria API real do serviço pago
 
-    // 3️⃣ Descontar 1 crédito
-    const novoSaldo = await pool.query(
-      "UPDATE usuarios SET saldo = saldo - 1 WHERE id = $1 RETURNING saldo",
+    await pool.query(
+      "UPDATE usuarios SET saldo = saldo - 1 WHERE id = $1",
       [usuario_id]
     );
 
-    // 4️⃣ Registrar consulta
     await pool.query(
       "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
-      [usuario_id, placaFormatada, 1]
+      [usuario_id, placa, 1]
     );
 
     res.json({
-      saldo_restante: usuario.rows[0].saldo - 1,
-      dados_fipe: response.data
+      mensagem: "Consulta realizada com sucesso",
+      saldo_restante: usuario.rows[0].saldo - 1
     });
 
   } catch (error) {
-    console.error("Erro na consulta:", error.message);
+    res.status(500).json({ erro: "Erro interno do servidor" });
+  }
+});
 
-    res.status(500).json({
-      erro: "Erro ao consultar placa",
-      detalhe: error.message
-    });
+/* =============================
+   HISTÓRICO
+============================= */
+
+app.get("/api/historico/:usuario_id", async (req, res) => {
+
+  const { usuario_id } = req.params;
+
+  try {
+    const historico = await pool.query(
+      "SELECT * FROM consultas WHERE usuario_id = $1 ORDER BY id DESC",
+      [usuario_id]
+    );
+
+    res.json(historico.rows);
+
+  } catch (error) {
+    res.status(500).json({ erro: "Erro ao buscar histórico" });
   }
 });
 
