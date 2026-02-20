@@ -58,10 +58,10 @@ app.post("/api/cadastro", async (req, res) => {
 
     const novoUsuario = await pool.query(
       `INSERT INTO usuarios 
-      (nome, sobrenome, telefone, email, senha, saldo) 
-      VALUES ($1, $2, $3, $4, $5, $6) 
-      RETURNING id, nome, sobrenome, email, saldo`,
-      [nome, sobrenome, telefone, email, senha, 3] // 🎁 bônus automático
+       (nome, sobrenome, telefone, email, senha, saldo) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       RETURNING id, nome, sobrenome, email, saldo`,
+      [nome, sobrenome, telefone, email, senha, 3]
     );
 
     res.json(novoUsuario.rows[0]);
@@ -114,17 +114,14 @@ app.post("/api/login", async (req, res) => {
 ============================= */
 
 app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
-
   const { placa, usuario_id } = req.params;
   const placaFormatada = placa.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
   try {
-
     const response = await axios.get(
       `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
     );
 
-    // 🔥 SALVA CONSULTA GRATUITA SE ESTIVER LOGADO
     if (usuario_id) {
       await pool.query(
         "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
@@ -143,58 +140,83 @@ app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
 });
 
 /* =============================
-   SERVIÇO PAGO EXEMPLO (VERIFICAÇÃO)
+   CONSULTA PROPRIETÁRIO ATUAL (R$ 11,99)
 ============================= */
 
-app.post("/api/verificacao/:placa", async (req, res) => {
-
-  const { placa } = req.params;
-  const { usuario_id } = req.body;
-
-  if (!usuario_id) {
-    return res.status(400).json({ erro: "Usuário obrigatório" });
-  }
+app.post("/api/proprietario-atual", async (req, res) => {
 
   try {
 
+    const { placa, userId } = req.body;
+    const VALOR_CONSULTA = 11.99;
+
+    if (!placa || !userId) {
+      return res.status(400).json({ erro: "Dados inválidos" });
+    }
+
     const usuario = await pool.query(
       "SELECT * FROM usuarios WHERE id = $1",
-      [usuario_id]
+      [userId]
     );
 
     if (usuario.rows.length === 0) {
       return res.status(404).json({ erro: "Usuário não encontrado" });
     }
 
-    if (usuario.rows[0].saldo <= 0) {
+    const saldoAtual = parseFloat(usuario.rows[0].saldo);
+
+    if (saldoAtual < VALOR_CONSULTA) {
       return res.status(403).json({ erro: "Saldo insuficiente" });
     }
 
-    // Aqui você colocaria API real do serviço pago
-
-    await pool.query(
-      "UPDATE usuarios SET saldo = saldo - 1 WHERE id = $1",
-      [usuario_id]
+    const response = await axios.post(
+      "https://ws2.checkpro.com.br/servicejson.asmx/ConsultaProprietarioAtualPorPlaca",
+      new URLSearchParams({
+        cpfUsuario: process.env.CHECKPRO_CPF,
+        senhaUsuario: process.env.CHECKPRO_SENHA,
+        placa: placa
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      }
     );
 
-    await pool.query(
-      "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
-      [usuario_id, placa, 1]
-    );
+    const data = response.data;
 
-    res.json({
-      mensagem: "Consulta realizada com sucesso",
-      saldo_restante: usuario.rows[0].saldo - 1
-    });
+    if (data.StatusRetorno === "1") {
+
+      await pool.query(
+        "UPDATE usuarios SET saldo = saldo - $1 WHERE id = $2",
+        [VALOR_CONSULTA, userId]
+      );
+
+      await pool.query(
+        "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
+        [userId, placa, VALOR_CONSULTA]
+      );
+
+      return res.json({
+        sucesso: true,
+        dados: data,
+        novoSaldo: saldoAtual - VALOR_CONSULTA
+      });
+
+    } else {
+      return res.json({
+        erro: data.MensagemRetorno
+      });
+    }
 
   } catch (error) {
+    console.log(error.response?.data || error.message);
     res.status(500).json({ erro: "Erro interno do servidor" });
   }
 });
 
-
 /* =============================
-   ROTA HISTÓRICO CONSULTAS
+   HISTÓRICO CONSULTAS
 ============================= */
 
 app.get("/api/historico/:usuario_id", async (req, res) => {
@@ -212,11 +234,9 @@ app.get("/api/historico/:usuario_id", async (req, res) => {
     res.json(consultas.rows);
 
   } catch (error) {
-    console.error("Erro ao buscar histórico:", error.message);
     res.status(500).json({ erro: "Erro ao buscar histórico" });
   }
 });
-
 
 /* =============================
    SERVIDOR
@@ -228,3 +248,74 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 
+app.post("/api/consulta-completa", async (req, res) => {
+
+  try {
+
+    const { placa, userId } = req.body;
+    const VALOR_CONSULTA = 54.90;
+
+    if (!placa || !userId) {
+      return res.status(400).json({ erro: "Dados inválidos" });
+    }
+
+    const usuario = await pool.query(
+      "SELECT * FROM usuarios WHERE id = $1",
+      [userId]
+    );
+
+    if (usuario.rows.length === 0) {
+      return res.status(404).json({ erro: "Usuário não encontrado" });
+    }
+
+    const saldoAtual = parseFloat(usuario.rows[0].saldo);
+
+    if (saldoAtual < VALOR_CONSULTA) {
+      return res.status(403).json({ erro: "Saldo insuficiente" });
+    }
+
+    const response = await axios.post(
+      "https://ws2.checkpro.com.br/servicejson.asmx/ConsultaPacoteCompletoPorPlaca",
+      new URLSearchParams({
+        cpfUsuario: process.env.CHECKPRO_CPF,
+        senhaUsuario: process.env.CHECKPRO_SENHA,
+        placa: placa
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      }
+    );
+
+    const data = response.data;
+
+    if (data.StatusRetorno === "1") {
+
+      await pool.query(
+        "UPDATE usuarios SET saldo = saldo - $1 WHERE id = $2",
+        [VALOR_CONSULTA, userId]
+      );
+
+      await pool.query(
+        "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1, $2, $3)",
+        [userId, placa, VALOR_CONSULTA]
+      );
+
+      return res.json({
+        sucesso: true,
+        dados: data,
+        novoSaldo: saldoAtual - VALOR_CONSULTA
+      });
+
+    } else {
+      return res.json({
+        erro: data.MensagemRetorno || "Erro na consulta"
+      });
+    }
+
+  } catch (error) {
+    console.log(error.response?.data || error.message);
+    res.status(500).json({ erro: "Erro interno do servidor" });
+  }
+});
