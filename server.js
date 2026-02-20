@@ -239,6 +239,38 @@ app.get("/api/historico/:usuario_id", async (req, res) => {
 });
 
 /* =============================
+   ROTA TEMPORÁRIA - ADICIONAR SALDO
+============================= */
+
+app.post("/api/admin/add-saldo", async (req, res) => {
+  try {
+    const { userId, valor } = req.body;
+
+    if (!userId || !valor) {
+      return res.status(400).json({ erro: "Dados inválidos" });
+    }
+
+    await pool.query(
+      "UPDATE usuarios SET saldo = saldo + $1 WHERE id = $2",
+      [valor, userId]
+    );
+
+    const usuarioAtualizado = await pool.query(
+      "SELECT saldo FROM usuarios WHERE id = $1",
+      [userId]
+    );
+
+    res.json({
+      sucesso: true,
+      novoSaldo: usuarioAtualizado.rows[0].saldo
+    });
+
+  } catch (error) {
+    res.status(500).json({ erro: "Erro ao adicionar saldo" });
+  }
+});
+
+/* =============================
    SERVIDOR
 ============================= */
 
