@@ -3,7 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const { Pool } = require("pg");
-const mercadopago = require("mercadopago");
+const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
 
 const app = express();
 
@@ -14,8 +14,8 @@ app.use(express.json());
    MERCADO PAGO CONFIG
 ============================= */
 
-mercadopago.configure({
-  access_token: process.env.MP_ACCESS_TOKEN
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN
 });
 
 /* =============================
@@ -126,34 +126,36 @@ app.post("/api/criar-pagamento", async (req, res) => {
     if (!valor || !userId)
       return res.status(400).json({ erro: "Dados inválidos" });
 
-    const preference = {
-      items: [
-        {
-          title: "Recarga de Créditos - Fipe Total",
-          quantity: 1,
-          currency_id: "BRL",
-          unit_price: Number(valor)
-        }
-      ],
-      metadata: {
-        userId: userId,
-        valor: valor
-      },
-      notification_url: "https://fip-total-backend.onrender.com/api/webhook-mercadopago",
-      back_urls: {
-        success: "https://engemafer.com.br/sucesso.html",
-        failure: "https://engemafer.com.br/erro.html",
-        pending: "https://engemafer.com.br/pendente.html"
-      },
-      auto_return: "approved"
-    };
+    const preference = new Preference(client);
 
-    const response = await mercadopago.preferences.create(preference);
+    const response = await preference.create({
+      body: {
+        items: [
+          {
+            title: "Recarga de Créditos - Fipe Total",
+            quantity: 1,
+            currency_id: "BRL",
+            unit_price: Number(valor)
+          }
+        ],
+        metadata: {
+          userId: userId,
+          valor: valor
+        },
+        notification_url: "https://fip-total-backend.onrender.com/api/webhook-mercadopago",
+        back_urls: {
+          success: "https://engemafer.com.br/sucesso.html",
+          failure: "https://engemafer.com.br/erro.html",
+          pending: "https://engemafer.com.br/pendente.html"
+        },
+        auto_return: "approved"
+      }
+    });
 
-    res.json({ id: response.body.id });
+    res.json({ id: response.id });
 
   } catch (error) {
-    console.log(error.message);
+    console.log(error);
     res.status(500).json({ erro: "Erro ao criar pagamento" });
   }
 
@@ -170,13 +172,15 @@ app.post("/api/webhook-mercadopago", async (req, res) => {
     const paymentId = req.body.data?.id;
     if (!paymentId) return res.sendStatus(200);
 
-    const payment = await mercadopago.payment.findById(paymentId);
+    const paymentClient = new Payment(client);
 
-    if (payment.body.status !== "approved")
+    const payment = await paymentClient.get({ id: paymentId });
+
+    if (payment.status !== "approved")
       return res.sendStatus(200);
 
-    const userId = payment.body.metadata.userId;
-    const valorPago = Number(payment.body.metadata.valor);
+    const userId = payment.metadata.userId;
+    const valorPago = Number(payment.metadata.valor);
 
     const jaProcessado = await pool.query(
       "SELECT * FROM pagamentos WHERE payment_id = $1",
@@ -201,7 +205,7 @@ app.post("/api/webhook-mercadopago", async (req, res) => {
     res.sendStatus(200);
 
   } catch (error) {
-    console.log(error.message);
+    console.log(error);
     res.sendStatus(200);
   }
 
