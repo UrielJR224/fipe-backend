@@ -222,7 +222,7 @@ app.post("/api/webhook-mercadopago", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const userId = payment.metadata?.userId;
+    const userId = payment.metadata?.userId || payment.metadata?.user_id;
     const valorPago = Number(payment.metadata?.valor);
 
     if (!userId || !valorPago) {
