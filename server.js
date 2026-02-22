@@ -334,6 +334,44 @@ app.post("/api/consulta-completa", async (req, res) => {
 });
 
 /* =============================
+   CONSULTA FIPE (GRÁTIS)
+============================= */
+
+app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
+
+  try {
+
+    const { placa, usuario_id } = req.params;
+
+    const placaFormatada = placa
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+
+    const response = await axios.get(
+      `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
+    );
+
+    // Se tiver usuário logado salva no histórico
+    if (usuario_id) {
+      await pool.query(
+        "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1,$2,$3)",
+        [usuario_id, placaFormatada, 0]
+      );
+    }
+
+    res.json(response.data);
+
+  } catch (error) {
+    console.log(error.response?.data || error.message);
+
+    res.status(500).json({
+      erro: "Erro ao consultar placa"
+    });
+  }
+
+});
+
+/* =============================
    HISTÓRICO
 ============================= */
 
