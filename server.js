@@ -447,6 +447,26 @@ app.get("/api/historico/:usuario_id", async (req, res) => {
 
 });
 
+app.get("/api/usuario/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const usuario = await pool.query(
+      "SELECT id, nome, sobrenome, email, saldo FROM usuarios WHERE id = $1",
+      [id]
+    );
+
+    if (!usuario.rows.length) {
+      return res.status(404).json({ erro: "Usuário não encontrado" });
+    }
+
+    res.json(usuario.rows[0]);
+
+  } catch (error) {
+    res.status(500).json({ erro: "Erro interno" });
+  }
+});
+
 /* =============================
    SERVIDOR
 ============================= */
