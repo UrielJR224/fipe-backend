@@ -167,28 +167,60 @@ app.post("/api/criar-pagamento", async (req, res) => {
 
 app.post("/api/webhook-mercadopago", async (req, res) => {
 
+  console.log("===================================");
+  console.log("Webhook chamado!");
+  console.log("Body recebido:", req.body);
+  console.log("===================================");
+
   try {
 
-    const paymentId = req.body.data?.id;
-    if (!paymentId) return res.sendStatus(200);
+    const paymentId =
+      req.body?.data?.id ||
+      req.body?.id ||
+      req.query?.id;
+
+    if (!paymentId) {
+      console.log("Nenhum paymentId encontrado.");
+      return res.sendStatus(200);
+    }
+
+    console.log("Payment ID recebido:", paymentId);
 
     const paymentClient = new Payment(client);
 
-    const payment = await paymentClient.get({ id: paymentId });
+    let payment;
 
-    if (payment.status !== "approved")
+    try {
+      payment = await paymentClient.get({ id: paymentId });
+    } catch (err) {
+      console.log("Pagamento não encontrado (simulação ou erro).");
       return res.sendStatus(200);
+    }
 
-    const userId = payment.metadata.userId;
-    const valorPago = Number(payment.metadata.valor);
+    console.log("Status do pagamento:", payment.status);
+
+    if (payment.status !== "approved") {
+      console.log("Pagamento ainda não aprovado.");
+      return res.sendStatus(200);
+    }
+
+    const userId = payment.metadata?.userId;
+    const valorPago = Number(payment.metadata?.valor);
+
+    if (!userId || !valorPago) {
+      console.log("Metadata inválida:", payment.metadata);
+      return res.sendStatus(200);
+    }
 
     const jaProcessado = await pool.query(
       "SELECT * FROM pagamentos WHERE payment_id = $1",
       [paymentId]
     );
 
-    if (jaProcessado.rows.length > 0)
+    if (jaProcessado.rows.length > 0) {
+      console.log("Pagamento já processado.");
       return res.sendStatus(200);
+    }
 
     await pool.query(
       "UPDATE usuarios SET saldo = saldo + $1 WHERE id = $2",
@@ -200,12 +232,12 @@ app.post("/api/webhook-mercadopago", async (req, res) => {
       [userId, paymentId, valorPago]
     );
 
-    console.log("Pagamento aprovado. Saldo atualizado.");
+    console.log("Saldo atualizado com sucesso!");
 
     res.sendStatus(200);
 
   } catch (error) {
-    console.log(error);
+    console.log("Erro geral no webhook:", error);
     res.sendStatus(200);
   }
 
