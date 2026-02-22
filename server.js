@@ -174,28 +174,46 @@ app.post("/api/webhook-mercadopago", async (req, res) => {
 
   try {
 
-    const paymentId =
-      req.body?.data?.id ||
-      req.body?.id ||
-      req.query?.id;
+    const paymentClient = new Payment(client);
+
+    let paymentId;
+
+    // 🔥 SE VIER MERCHANT ORDER
+    if (req.body.topic === "merchant_order") {
+
+      const orderUrl = req.body.resource;
+
+      const orderResponse = await axios.get(orderUrl, {
+        headers: {
+          Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+        }
+      });
+
+      const order = orderResponse.data;
+
+      if (!order.payments || order.payments.length === 0) {
+        console.log("Order sem pagamento ainda.");
+        return res.sendStatus(200);
+      }
+
+      paymentId = order.payments[0].id;
+
+      console.log("Payment ID vindo da order:", paymentId);
+
+    } else {
+
+      paymentId =
+        req.body?.data?.id ||
+        req.body?.id;
+
+    }
 
     if (!paymentId) {
       console.log("Nenhum paymentId encontrado.");
       return res.sendStatus(200);
     }
 
-    console.log("Payment ID recebido:", paymentId);
-
-    const paymentClient = new Payment(client);
-
-    let payment;
-
-    try {
-      payment = await paymentClient.get({ id: paymentId });
-    } catch (err) {
-      console.log("Pagamento não encontrado (simulação ou erro).");
-      return res.sendStatus(200);
-    }
+    const payment = await paymentClient.get({ id: paymentId });
 
     console.log("Status do pagamento:", payment.status);
 
