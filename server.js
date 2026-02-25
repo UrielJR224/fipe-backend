@@ -290,14 +290,16 @@ app.post("/api/proprietario-atual", async (req, res) => {
       new URLSearchParams({
         cpfUsuario: process.env.CHECKPRO_CPF,
         senhaUsuario: process.env.CHECKPRO_SENHA,
-        placa: placa
+        placa: placa.toUpperCase().replace(/[^A-Z0-9]/g, "")
       }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
     const data = response.data;
 
-    if (data.StatusRetorno !== "1")
+    console.log("Resposta CheckPro:", data);
+
+    if (String(data.StatusRetorno) !== "1")
       return res.json({ erro: data.MensagemRetorno });
 
     await pool.query(
@@ -317,7 +319,13 @@ app.post("/api/proprietario-atual", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ erro: "Erro interno do servidor" });
+    console.log("ERRO DETALHADO CHECKPRO:");
+    console.log(error.response?.data || error.message);
+
+    res.status(500).json({
+      erro: "Erro interno do servidor",
+      detalhe: error.response?.data || error.message
+    });
   }
 
 });
@@ -351,14 +359,16 @@ app.post("/api/consulta-completa", async (req, res) => {
       new URLSearchParams({
         cpfUsuario: process.env.CHECKPRO_CPF,
         senhaUsuario: process.env.CHECKPRO_SENHA,
-        placa: placa
+        placa: placa.toUpperCase().replace(/[^A-Z0-9]/g, "")
       }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
     const data = response.data;
 
-    if (data.StatusRetorno !== "1")
+    console.log("Resposta CheckPro:", data);
+
+    if (String(data.StatusRetorno) !== "1")
       return res.json({ erro: data.MensagemRetorno });
 
     await pool.query(
@@ -378,7 +388,13 @@ app.post("/api/consulta-completa", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ erro: "Erro interno do servidor" });
+    console.log("ERRO DETALHADO CHECKPRO:");
+    console.log(error.response?.data || error.message);
+
+    res.status(500).json({
+      erro: "Erro interno do servidor",
+      detalhe: error.response?.data || error.message
+    });
   }
 
 });
