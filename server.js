@@ -68,7 +68,7 @@ app.post("/api/cadastro", async (req, res) => {
        (nome, sobrenome, telefone, email, senha, saldo)
        VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING id, nome, sobrenome, email, saldo`,
-      [nome, sobrenome, telefone, email, senha, 0]
+      [nome, sobrenome, telefone, email, senha, 3]
     );
 
     res.json(novoUsuario.rows[0]);
@@ -339,7 +339,7 @@ app.post("/api/consulta-completa", async (req, res) => {
   try {
 
     const { placa, userId } = req.body;
-    const VALOR = 54.90;
+    const VALOR = Number(54.90);
 
     const usuario = await pool.query(
       "SELECT saldo FROM usuarios WHERE id = $1",
@@ -354,22 +354,27 @@ app.post("/api/consulta-completa", async (req, res) => {
     if (saldo < VALOR)
       return res.status(403).json({ erro: "Saldo insuficiente" });
 
+    const placaFormatada = placa.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
     const response = await axios.post(
       "https://ws2.checkpro.com.br/servicejson.asmx/ConsultaPacoteCompletoPorPlaca",
       new URLSearchParams({
         cpfUsuario: process.env.CHECKPRO_CPF,
         senhaUsuario: process.env.CHECKPRO_SENHA,
-        placa: placa.toUpperCase().replace(/[^A-Z0-9]/g, "")
+        placa: placaFormatada
       }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
     const data = response.data;
 
-    console.log("Resposta CheckPro:", data);
+    console.log("Resposta CheckPro COMPLETA:", data);
 
     if (String(data.StatusRetorno) !== "1")
       return res.json({ erro: data.MensagemRetorno });
+
+    // 🔒 Transação segura
+    await pool.query("BEGIN");
 
     await pool.query(
       "UPDATE usuarios SET saldo = saldo - $1 WHERE id = $2",
@@ -378,8 +383,10 @@ app.post("/api/consulta-completa", async (req, res) => {
 
     await pool.query(
       "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1,$2,$3)",
-      [userId, placa, VALOR]
+      [userId, placaFormatada, VALOR]
     );
+
+    await pool.query("COMMIT");
 
     res.json({
       sucesso: true,
@@ -388,7 +395,10 @@ app.post("/api/consulta-completa", async (req, res) => {
     });
 
   } catch (error) {
-    console.log("ERRO DETALHADO CHECKPRO:");
+
+    await pool.query("ROLLBACK");
+
+    console.log("ERRO DETALHADO CONSULTA COMPLETA:");
     console.log(error.response?.data || error.message);
 
     res.status(500).json({
