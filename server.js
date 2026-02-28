@@ -308,10 +308,9 @@ app.post("/api/proprietario-atual", async (req, res) => {
     );
 
     await pool.query(
-      "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1,$2,$3)",
-      [userId, placa, VALOR]
+      "INSERT INTO consultas (usuario_id, placa, valor_pago, dados_json) VALUES ($1,$2,$3,$4)",
+      [userId, placaFormatada, VALOR, data]
     );
-
     res.json({
       sucesso: true,
       dados: data,
@@ -382,8 +381,8 @@ app.post("/api/consulta-completa", async (req, res) => {
     );
 
     await pool.query(
-      "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1,$2,$3)",
-      [userId, placaFormatada, VALOR]
+      "INSERT INTO consultas (usuario_id, placa, valor_pago, dados_json) VALUES ($1,$2,$3,$4)",
+      [userId, placaFormatada, VALOR, data]
     );
 
     await pool.query("COMMIT");
