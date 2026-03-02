@@ -4,6 +4,8 @@ const axios = require("axios");
 const cors = require("cors");
 const { Pool } = require("pg");
 const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 
@@ -63,12 +65,14 @@ app.post("/api/cadastro", async (req, res) => {
     if (usuarioExistente.rows.length > 0)
       return res.status(400).json({ erro: "Email já cadastrado" });
 
+    const senhaHash = await bcrypt.hash(senha, 10);
+
     const novoUsuario = await pool.query(
       `INSERT INTO usuarios 
-       (nome, sobrenome, telefone, email, senha, saldo)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, nome, sobrenome, email, saldo`,
-      [nome, sobrenome, telefone, email, senha, 3]
+   (nome, sobrenome, telefone, email, senha, saldo)
+   VALUES ($1,$2,$3,$4,$5,$6)
+   RETURNING id, nome, sobrenome, email, saldo`,
+      [nome, sobrenome, telefone, email, senhaHash, 3]
     );
 
     res.json(novoUsuario.rows[0]);
@@ -83,34 +87,46 @@ app.post("/api/cadastro", async (req, res) => {
 ============================= */
 
 app.post("/api/login", async (req, res) => {
-
   const { email, senha } = req.body;
 
   try {
-
-    const usuario = await pool.query(
+    const result = await pool.query(
       "SELECT * FROM usuarios WHERE email = $1",
       [email]
     );
 
-    if (usuario.rows.length === 0)
+    if (result.rows.length === 0) {
       return res.status(400).json({ erro: "Usuário não encontrado" });
+    }
 
-    if (usuario.rows[0].senha !== senha)
+    const usuario = result.rows[0];
+
+    const senhaValida = await bcrypt.compare(senha, usuario.senha);
+
+    if (!senhaValida) {
       return res.status(400).json({ erro: "Senha incorreta" });
+    }
+
+    const token = jwt.sign(
+      { id: usuario.id, is_admin: usuario.is_admin },
+      process.env.JWT_SECRET || "segredo_super",
+      { expiresIn: "1d" }
+    );
 
     res.json({
-      id: usuario.rows[0].id,
-      nome: usuario.rows[0].nome,
-      sobrenome: usuario.rows[0].sobrenome,
-      email: usuario.rows[0].email,
-      saldo: usuario.rows[0].saldo
+      token,
+      usuario: {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        saldo: usuario.saldo,
+        is_admin: usuario.is_admin
+      }
     });
 
-  } catch (error) {
-    res.status(500).json({ erro: "Erro interno do servidor" });
+  } catch (err) {
+    res.status(500).json({ erro: "Erro no servidor" });
   }
-
 });
 
 /* =============================
@@ -556,6 +572,166 @@ app.post("/api/consulta-bancaria", async (req, res) => {
   }
 
 });
+
+function autenticar(req, res, next) {
+
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({ erro: "Token não fornecido" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.usuario = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ erro: "Token inválido" });
+  }
+}
+
+function verificarAdmin(req, res, next) {
+
+  if (!req.usuario || !req.usuario.is_admin) {
+    return res.status(403).json({ erro: "Acesso negado" });
+  }
+
+  next();
+}
+
+app.get("/api/admin/usuarios", autenticar, verificarAdmin, async (req, res) => {
+
+  try {
+
+    const result = await pool.query(`
+            SELECT id, nome, email, saldo, criado_em, bloqueado
+            FROM usuarios
+            ORDER BY criado_em DESC
+        `);
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao buscar usuários" });
+  }
+
+});
+
+app.post("/api/admin/adicionar-saldo", autenticar, verificarAdmin, async (req, res) => {
+
+  const { userId, valor } = req.body;
+
+  if (!userId || !valor) {
+    return res.status(400).json({ erro: "Dados inválidos" });
+  }
+
+  try {
+
+    await pool.query(`
+            UPDATE usuarios
+            SET saldo = saldo + $1
+            WHERE id = $2
+        `, [valor, userId]);
+
+    res.json({ sucesso: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao adicionar saldo" });
+  }
+
+});
+
+app.post("/api/admin/remover-saldo", autenticar, verificarAdmin, async (req, res) => {
+
+  const { userId, valor } = req.body;
+
+  try {
+
+    await pool.query(`
+            UPDATE usuarios
+            SET saldo = saldo - $1
+            WHERE id = $2
+        `, [valor, userId]);
+
+    res.json({ sucesso: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao remover saldo" });
+  }
+
+});
+
+app.post("/api/admin/bloquear", autenticar, verificarAdmin, async (req, res) => {
+
+  const { userId } = req.body;
+
+  try {
+
+    await pool.query(`
+            UPDATE usuarios
+            SET bloqueado = TRUE
+            WHERE id = $1
+        `, [userId]);
+
+    res.json({ sucesso: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao bloquear usuário" });
+  }
+
+});
+
+app.post("/api/admin/desbloquear", autenticar, verificarAdmin, async (req, res) => {
+
+  const { userId } = req.body;
+
+  try {
+
+    await pool.query(`
+            UPDATE usuarios
+            SET bloqueado = FALSE
+            WHERE id = $1
+        `, [userId]);
+
+    res.json({ sucesso: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao desbloquear usuário" });
+  }
+
+});
+
+app.post("/api/admin/resetar-senha", autenticar, verificarAdmin, async (req, res) => {
+
+  const { userId, novaSenha } = req.body;
+
+  try {
+
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+
+    await pool.query(`
+            UPDATE usuarios
+            SET senha = $1
+            WHERE id = $2
+        `, [senhaHash, userId]);
+
+    res.json({ sucesso: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao resetar senha" });
+  }
+
+});
+
+
 
 /* =============================
    SERVIDOR
