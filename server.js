@@ -426,7 +426,9 @@ app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
       `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
     );
 
-    // Se tiver usuário logado salva no histórico
+    const data = response.data;
+
+    // salva no histórico se estiver logado
     if (usuario_id) {
       await pool.query(
         "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1,$2,$3)",
@@ -434,13 +436,14 @@ app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
       );
     }
 
-    res.json(response.data);
+    res.json(data);
 
   } catch (error) {
-    console.log(error.response?.data || error.message);
+
+    console.log("Erro FIPE:", error.response?.data || error.message);
 
     res.status(500).json({
-      erro: "Erro ao consultar placa"
+      erro: error.response?.data?.msg || "Erro ao consultar placa"
     });
   }
 
