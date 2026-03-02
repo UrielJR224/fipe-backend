@@ -471,7 +471,7 @@ app.get("/api/historico/:usuario_id", async (req, res) => {
   try {
 
     const consultas = await pool.query(
-      `SELECT placa, valor_pago, criado_em
+      `SELECT placa, valor_pago, criado_em, dados_json
        FROM consultas
        WHERE usuario_id = $1
        ORDER BY criado_em DESC`,
@@ -504,6 +504,57 @@ app.get("/api/usuario/:id", async (req, res) => {
   } catch (error) {
     res.status(500).json({ erro: "Erro interno" });
   }
+});
+
+/* =============================
+   CONSULTA BANCÁRIA (R$ 79,90)
+============================= */
+
+app.post("/api/consulta-bancaria", async (req, res) => {
+
+  try {
+
+    const { placa, nome, sobrenome, whatsapp, email, userId } = req.body;
+    const VALOR = 79.90;
+
+    const usuario = await pool.query(
+      "SELECT saldo FROM usuarios WHERE id = $1",
+      [userId]
+    );
+
+    if (!usuario.rows.length)
+      return res.status(404).json({ erro: "Usuário não encontrado" });
+
+    const saldo = Number(usuario.rows[0].saldo);
+
+    if (saldo < VALOR)
+      return res.status(403).json({ erro: "Saldo insuficiente" });
+
+    await pool.query("BEGIN");
+
+    await pool.query(
+      "UPDATE usuarios SET saldo = saldo - $1 WHERE id = $2",
+      [VALOR, userId]
+    );
+
+    await pool.query(
+      `INSERT INTO consultas_bancarias 
+      (usuario_id, placa, nome, sobrenome, whatsapp, email, valor_pago)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [userId, placa, nome, sobrenome, whatsapp, email, VALOR]
+    );
+
+    await pool.query("COMMIT");
+
+    res.json({ sucesso: true });
+
+  } catch (error) {
+
+    await pool.query("ROLLBACK");
+
+    res.status(500).json({ erro: "Erro interno do servidor" });
+  }
+
 });
 
 /* =============================
