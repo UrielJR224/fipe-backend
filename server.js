@@ -422,17 +422,28 @@ app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "");
 
-    const response = await axios.get(
-      `https://api.placafipe.com.br/getplacafipe/${placaFormatada}/${process.env.FIPE_API_TOKEN}`
+    const response = await axios.post(
+      "https://api.placafipe.com.br/getplacafipe",
+      {
+        placa: placaFormatada,
+        token: process.env.FIPE_API_TOKEN
+      },
+      {
+        headers: { "Content-Type": "application/json" }
+      }
     );
 
     const data = response.data;
 
-    // salva no histórico se estiver logado
+    if (data.codigo !== 1) {
+      return res.json({ erro: data.msg });
+    }
+
+    // salva histórico se logado
     if (usuario_id) {
       await pool.query(
-        "INSERT INTO consultas (usuario_id, placa, valor_pago) VALUES ($1,$2,$3)",
-        [usuario_id, placaFormatada, 0]
+        "INSERT INTO consultas (usuario_id, placa, valor_pago, dados_json) VALUES ($1,$2,$3,$4)",
+        [usuario_id, placaFormatada, 0, data]
       );
     }
 
@@ -440,7 +451,7 @@ app.get("/api/placafipe/:placa/:usuario_id?", async (req, res) => {
 
   } catch (error) {
 
-    console.log("Erro FIPE:", error.response?.data || error.message);
+    console.log("ERRO FIPE:", error.response?.data || error.message);
 
     res.status(500).json({
       erro: error.response?.data?.msg || "Erro ao consultar placa"
