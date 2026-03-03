@@ -90,10 +90,14 @@ app.post("/api/login", async (req, res) => {
   const { email, senha } = req.body;
 
   try {
+    console.log("Email recebido:", email);
+
     const result = await pool.query(
       "SELECT * FROM usuarios WHERE email = $1",
       [email]
     );
+
+    console.log("Resultado banco:", result.rows);
 
     if (result.rows.length === 0) {
       return res.status(400).json({ erro: "Usuário não encontrado" });
